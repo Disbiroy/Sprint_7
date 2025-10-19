@@ -1,55 +1,58 @@
 import pytest
 import allure
-from api.order_api import OrderAPI
 from data.test_data import TestData
 
 
 @allure.feature('Order API')
 class TestOrder:
 
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        self.order_api = OrderAPI()
-
     @allure.title('Test order creation with different colors')
     @allure.description('Test order creation with BLACK, GREY, both colors and without color')
     @pytest.mark.parametrize('color', TestData.COLORS)
-    def test_create_order_with_different_colors(self, color):
-
-        order_data = TestData.ORDER_DATA.copy()
+    def test_create_order_with_different_colors(self, color, order_api):
+        # Готовим тестовые данные с помощью фикстуры или генератора
+        order_data = TestData.generate_order_data(color=color)
 
         with allure.step(f'Create order with color: {color}'):
-            response = self.order_api.create_order(
-                first_name=order_data["firstName"],
-                last_name=order_data["lastName"],
-                address=order_data["address"],
-                metro_station=order_data["metroStation"],
-                phone=order_data["phone"],
-                rent_time=order_data["rentTime"],
-                delivery_date=order_data["deliveryDate"],
-                comment=order_data["comment"],
-                color=color
-            )
-
+            response = order_api.create_order(**order_data)
             assert response.status_code == 201
+
             response_data = response.json()
             assert "track" in response_data
             assert isinstance(response_data["track"], int)
 
     @allure.title('Test get orders list')
     @allure.description('Test that orders list is returned correctly')
-    def test_get_orders_list(self):
+    def test_get_orders_list(self, order_api, created_order):
+        # Фикстура created_order гарантирует, что есть хотя бы один заказ
 
         with allure.step('Get orders list'):
-            response = self.order_api.get_orders_list()
+            response = order_api.get_orders_list()
             assert response.status_code == 200
 
             response_data = response.json()
             assert "orders" in response_data
             assert isinstance(response_data["orders"], list)
+            assert len(response_data["orders"]) > 0  # Теперь гарантированно не пустой
 
-            # Проверяем, что список не пустой (если есть заказы)
-            if len(response_data["orders"]) > 0:
-                order = response_data["orders"][0]
-                assert "id" in order
-                assert "track" in order
+            # Проверяем структуру первого заказа
+            order = response_data["orders"][0]
+            assert "id" in order
+            assert isinstance(order["id"], int)
+            assert "track" in order
+            assert isinstance(order["track"], int)
+
+    @allure.title('Test get order by track number')
+    @allure.description('Test that order can be retrieved by track number')
+    def test_get_order_by_track(self, order_api, created_order):
+        order_track = created_order
+
+        with allure.step('Get order by track number'):
+            response = order_api.get_order_by_track(order_track)
+            assert response.status_code == 200
+
+            response_data = response.json()
+            assert "order" in response_data
+            order = response_data["order"]
+            assert order["track"] == order_track
+            assert "id" in order
